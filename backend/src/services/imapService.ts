@@ -103,16 +103,22 @@ export class ImapService extends EventEmitter {
         size: att.size,
         cid: att.cid
       }));
+      const getAddressList = (addr) => {
+        if (!addr) return [];
+        if (Array.isArray(addr)) return addr.map(a => a.address || a.text || '');
+        if (typeof addr === 'object') return [addr.address || addr.text || ''];
+        return [];
+      };
       const email: Email = {
         id: `${account.id}_${msg.uid}`,
         messageId: parsed.messageId || `${account.id}_${msg.uid}_${Date.now()}`,
         accountId: account.id,
         folder: 'INBOX',
         subject: parsed.subject || '',
-        from: parsed.from?.text || '',
-        to: parsed.to?.text ? [parsed.to.text] : [],
-        cc: parsed.cc?.text ? [parsed.cc.text] : [],
-        bcc: parsed.bcc?.text ? [parsed.bcc.text] : [],
+        from: getAddressList(parsed.from).join(', '),
+        to: getAddressList(parsed.to),
+        cc: getAddressList(parsed.cc),
+        bcc: getAddressList(parsed.bcc),
         date: parsed.date || new Date(),
         bodyText: parsed.text || '',
         bodyHtml: parsed.html || '',
@@ -122,6 +128,7 @@ export class ImapService extends EventEmitter {
         uid: msg.uid
       };
       this.emit('newEmail', email);
+      logger.info('Indexing email:', email.subject, email.accountId, email.date);
     } catch (error) {
       logger.error('Error processing message:', error);
     }

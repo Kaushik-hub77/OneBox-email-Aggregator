@@ -1,36 +1,33 @@
 import { ElasticsearchClient } from '../config/database';
 import { Email, SearchQuery } from '../types';
-import { logger } from '../utils/logger';
+// Use console as logger fallback
+const logger = {
+  info: (...args: any[]) => console.log('[INFO]', ...args),
+  error: (...args: any[]) => console.error('[ERROR]', ...args),
+  warn: (...args: any[]) => console.warn('[WARN]', ...args),
+};
 
 export class ElasticsearchService {
   private es = ElasticsearchClient.getInstance();
   private indexName = process.env.ELASTICSEARCH_INDEX || 'emails';
 
   async indexEmail(email: Email): Promise<boolean> {
+    console.log('indexEmail CALLED', email && email.subject);
     try {
-      // Check if email already exists
-      const existsResponse = await this.es.client.search({
-        index: this.indexName,
-        body: {
-          query: {
-            term: { messageId: email.messageId }
-          }
-        },
-        size: 1
-      });
-
-      if (existsResponse.hits.total.value > 0) {
-        logger.info(`Email already indexed: ${email.messageId}`);
-        return false;
-      }
-
-      // Index the email
-      await this.es.client.index({
+      logger.info('Indexing to index:', this.indexName);
+      const { id, date, indexedAt, ...rest } = email;
+      const emailBody = {
+        ...rest,
+        date: (date instanceof Date) ? date.toISOString() : date,
+        indexedAt: (indexedAt instanceof Date) ? indexedAt.toISOString() : indexedAt
+      };
+      logger.info('Document to be indexed:', JSON.stringify(emailBody, null, 2));
+      const indexResponse = await this.es.client.index({
         index: this.indexName,
         id: email.id,
-        body: email
+        document: emailBody
       });
-
+      logger.info('Elasticsearch index response:', JSON.stringify(indexResponse, null, 2));
       logger.info(`Indexed email: ${email.subject} (${email.id})`);
       return true;
     } catch (error) {
@@ -51,11 +48,8 @@ export class ElasticsearchService {
         page = 1,
         size = 20
       } = searchQuery;
-
       const must: any[] = [];
       const filter: any[] = [];
-
-      // Text search
       if (query) {
         must.push({
           multi_match: {
@@ -64,21 +58,17 @@ export class ElasticsearchService {
           }
         });
       }
-
-      // Filters
       if (accountId) filter.push({ term: { accountId } });
       if (folder) filter.push({ term: { folder } });
       if (category) filter.push({ term: { category } });
-      
-      // Date range
       if (from || to) {
         const dateRange: any = {};
         if (from) dateRange.gte = from;
         if (to) dateRange.lte = to;
         filter.push({ range: { date: dateRange } });
       }
-
-      const searchBody: any = {
+      const response = await this.es.client.search({
+        index: this.indexName,
         query: {
           bool: {
             must: must.length > 0 ? must : [{ match_all: {} }],
@@ -88,18 +78,10 @@ export class ElasticsearchService {
         sort: [{ date: { order: 'desc' } }],
         from: (page - 1) * size,
         size
-      };
-
-      const response = await this.es.client.search({
-        index: this.indexName,
-        body: searchBody
       });
-
-      const emails = response.hits.hits.map((hit: any) => hit._source as Email);
-      const total = typeof response.hits.total === 'number' 
-        ? response.hits.total 
-        : response.hits.total.value;
-
+      const emails = response.hits?.hits?.map((hit: any) => hit._source as Email) || [];
+      const totalHits = response.hits?.total;
+      const total = typeof totalHits === 'number' ? totalHits : totalHits?.value || 0;
       return { emails, total };
     } catch (error) {
       logger.error('Error searching emails:', error);
@@ -112,14 +94,11 @@ export class ElasticsearchService {
       await this.es.client.update({
         index: this.indexName,
         id: emailId,
-        body: {
-          doc: {
-            category,
-            aiScore
-          }
+        doc: {
+          category,
+          aiScore
         }
       });
-
       logger.info(`Updated email category: ${emailId} -> ${category}`);
       return true;
     } catch (error) {
@@ -134,9 +113,8 @@ export class ElasticsearchService {
         index: this.indexName,
         id: emailId
       });
-
       return response._source as Email;
-    } catch (error) {
+    } catch (error: any) {
       if (error.statusCode !== 404) {
         logger.error('Error getting email by ID:', error);
       }
@@ -148,26 +126,21 @@ export class ElasticsearchService {
     try {
       const response = await this.es.client.search({
         index: this.indexName,
-        body: {
-          size: 0,
-          aggs: {
-            categories: {
-              terms: {
-                field: 'category',
-                size: 10
-              }
+        size: 0,
+        aggs: {
+          categories: {
+            terms: {
+              field: 'category',
+              size: 10
             }
           }
         }
       });
-
-      const buckets = response.aggregations?.categories?.buckets || [];
+      const buckets = (response.aggregations as any)?.categories?.buckets || [];
       const stats: Record<string, number> = {};
-
       buckets.forEach((bucket: any) => {
         stats[bucket.key] = bucket.doc_count;
       });
-
       return stats;
     } catch (error) {
       logger.error('Error getting category stats:', error);
@@ -179,34 +152,28 @@ export class ElasticsearchService {
     try {
       const response = await this.es.client.search({
         index: this.indexName,
-        body: {
-          query: { match_all: {} },
-          sort: [{ date: { order: 'desc' } }],
-          size: limit
-        }
+        query: { match_all: {} },
+        sort: [{ date: { order: 'desc' } }],
+        size: limit
       });
-
-      return response.hits.hits.map((hit: any) => hit._source as Email);
+      return response.hits?.hits?.map((hit: any) => hit._source as Email) || [];
     } catch (error) {
       logger.error('Error getting recent emails:', error);
       return [];
     }
   }
 
-  async getEmailsByCategory(category: EmailCategory, limit: number = 50): Promise<Email[]> {
+  async getEmailsByCategory(category: string, limit: number = 50): Promise<Email[]> {
     try {
       const response = await this.es.client.search({
         index: this.indexName,
-        body: {
-          query: {
-            term: { category }
-          },
-          sort: [{ date: { order: 'desc' } }],
-          size: limit
-        }
+        query: {
+          term: { category }
+        },
+        sort: [{ date: { order: 'desc' } }],
+        size: limit
       });
-
-      return response.hits.hits.map((hit: any) => hit._source as Email);
+      return response.hits?.hits?.map((hit: any) => hit._source as Email) || [];
     } catch (error) {
       logger.error('Error getting emails by category:', error);
       return [];

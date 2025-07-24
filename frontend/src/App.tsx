@@ -48,26 +48,36 @@ const App: React.FC = () => {
   }, [query, accountId, category, page]);
 
   const fetchAccounts = async () => {
-    // This assumes account IDs are discoverable from emails or a separate endpoint
-    // For demo, fetch first page and extract unique accountIds
-    const res = await fetch(`${API_URL}?size=100`);
-    const data: EmailSearchResult = await res.json();
-    const uniqueAccounts = Array.from(new Set(data.emails.map(e => e.accountId)));
-    setAccounts(uniqueAccounts);
+    try {
+      const res = await fetch(`${API_URL}?size=100`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      const emails = Array.isArray(data.emails) ? data.emails : [];
+      const uniqueAccounts = Array.from(new Set(emails.map(e => e.accountId)));
+      setAccounts(uniqueAccounts);
+    } catch (err) {
+      setAccounts([]);
+    }
   };
 
   const fetchEmails = async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (query) params.append('query', query);
-    if (accountId) params.append('accountId', accountId);
-    if (category) params.append('category', category);
-    params.append('page', page.toString());
-    params.append('size', size.toString());
-    const res = await fetch(`${API_URL}?${params.toString()}`);
-    const data: EmailSearchResult = await res.json();
-    setEmails(data.emails);
-    setTotal(data.total);
+    try {
+      const params = new URLSearchParams();
+      if (query) params.append('query', query);
+      if (accountId) params.append('accountId', accountId);
+      if (category) params.append('category', category);
+      params.append('page', page.toString());
+      params.append('size', size.toString());
+      const res = await fetch(`${API_URL}?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setEmails(Array.isArray(data.emails) ? data.emails : []);
+      setTotal(data.total || 0);
+    } catch (err) {
+      setEmails([]);
+      setTotal(0);
+    }
     setLoading(false);
   };
 

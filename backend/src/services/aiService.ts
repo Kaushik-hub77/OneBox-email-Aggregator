@@ -29,16 +29,16 @@ export class AIService {
         },
         body: JSON.stringify({
           model: 'deepseek/deepseek-chat-v3-0324',
-          messages: [
-            {
-              role: 'system',
+        messages: [
+          {
+            role: 'system',
               content: `You are an AI email categorizer. Categorize emails into exactly one of these categories:\n- Interested: Shows interest in a product, service, or opportunity\n- Meeting Booked: Confirms or schedules a meeting\n- Not Interested: Explicitly declines or shows no interest\n- Spam: Promotional, unsolicited, or spam emails\n- Out of Office: Automated out-of-office replies\nRespond with only the category name and a confidence score (0-1) in this format: \"CATEGORY:SCORE\"`
-            },
-            {
-              role: 'user',
-              content: emailContent
-            }
-          ],
+          },
+          {
+            role: 'user',
+            content: emailContent
+          }
+        ],
         })
       });
       if (!response.ok) throw new Error(`DeepSeek API error: ${response.status}`);

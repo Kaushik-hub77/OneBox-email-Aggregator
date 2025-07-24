@@ -5,7 +5,7 @@ import { EmailCategory } from '../types';
 const router = express.Router();
 const esService = new ElasticsearchService();
 
-// GET /emails/stats - Get category stats
+// stats
 router.get('/stats', async (req, res) => {
   try {
     const stats = await esService.getCategoryStats();
@@ -15,7 +15,7 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// GET /emails/recent - Get recent emails
+// recent mails
 router.get('/recent', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;

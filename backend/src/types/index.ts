@@ -7,7 +7,7 @@ export interface EmailAccount {
     tls: boolean;
     label: string;
   }
-  
+
   export interface Email {
     id: string;
     messageId: string;
